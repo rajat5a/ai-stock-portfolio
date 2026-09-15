@@ -75,7 +75,15 @@ function App() {
     try {
       if (isSignup) {
         await signupUser(email, password);
-        alert("Account created successfully! Please login.");
+        // SweetAlert for Successful Signup
+        Swal.fire({
+          title: 'Account Created!',
+          text: 'Your account has been created successfully. Please login.',
+          icon: 'success',
+          confirmButtonColor: '#4f46e5',
+          background: '#1f2937',
+          color: '#ffffff'
+        });
         setIsSignup(false);
         setPassword('');
       } else {
