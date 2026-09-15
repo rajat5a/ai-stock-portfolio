@@ -325,25 +325,39 @@ def portfolio_chat(data: dict, db: Session = Depends(database.get_db), current_u
     
     # fetch user portfolio stocks
     stocks = db.query(models.Portfolio).filter(models.Portfolio.user_id == current_user.id).all()
-    stock_symbols = [s.symbol for s in stocks]
     
-    portfolio_context = f"The user's current portfolio contains these stocks: {', '.join(stock_symbols)}." if stock_symbols else "The user's portfolio is currently empty."
+    if not stocks:
+        return {"reply": "Your portfolio is currently empty. Add stocks to start chatting with your AI assistant!"}
+    
+    # Fetch Live yfinance data 
+    stock_details = []
+    for s in stocks:
+        try:
+            ticker = yf.Ticker(s.symbol)
+            hist = ticker.history(period="2d")
+            if len(hist) >= 2:
+                curr_price = hist['Close'].iloc[-1]
+                prev_close = hist['Close'].iloc[-2]
+                pct_change = ((curr_price - prev_close) / prev_close) * 100
+                total_value = curr_price * s.quantity
+                stock_details.append(f"- {s.symbol}: Quantity {s.quantity}, Current Price ₹{curr_price:.2f}, Today's Change: {pct_change:.2f}%, Total Value ₹{total_value:.2f}")
+            else:
+                stock_details.append(f"- {s.symbol}: Quantity {s.quantity}, Buy Price ₹{s.buy_price}")
+        except Exception:
+            stock_details.append(f"- {s.symbol}: Quantity {s.quantity}")
+
+    portfolio_context = "Here is the user's current portfolio with LIVE market data:\n" + "\n".join(stock_details)
     
     prompt = f"""
-    You are an expert AI Stock Market Assistant and Financial Advisor.
+    You are an expert AI Stock Market Assistant and Financial Advisor. 
     {portfolio_context}
     
     User Query: "{user_message}"
     
-    Provide a helpful, sharp, and concise financial response. Keep it professional.
+    Analyze the live data provided above. If the user asks about today's losers, winners, performance, or specific stock stats, calculate and answer directly and accurately using the given percentage changes and prices. Keep it professional, crisp, and insightful.
     """
     
     API_KEY = os.getenv("GEMINI_API_KEY")
-    
-    if API_KEY == "YOUR_GEMINI_API_KEY_HERE":
-        return {"reply": "⚠️ Gemini API Key is missing. Please configure your API key in the backend."}
-    
-    # Updated stable Gemini model endpoint
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={API_KEY}"
     payload = {
         "contents": [{
@@ -356,11 +370,9 @@ def portfolio_chat(data: dict, db: Session = Depends(database.get_db), current_u
         res_data = response.json()
         
         if "error" in res_data:
-            print(f"Gemini API Error Response: {res_data['error']}")
-            return {"reply": f"AI Error: {res_data['error'].get('message', 'Unknown error from Gemini')}"}
+            return {"reply": f"AI Error: {res_data['error'].get('message', 'Unknown error')}"}
             
         ai_reply = res_data["candidates"][0]["content"]["parts"][0]["text"]
         return {"reply": ai_reply}
     except Exception as e:
-        print(f"Chat Exception: {e}")
         return {"reply": f"AI Assistant connection error: {str(e)}"}

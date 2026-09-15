@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { getPortfolio, addStock, deleteStock, loginUser, signupUser, logoutUser } from './services/api';
+import { addStock, deleteStock, loginUser, signupUser, logoutUser } from './services/api';
 import ReactMarkdown from 'react-markdown';
 
 function App() {
@@ -47,27 +47,25 @@ function App() {
   }, [chatMessages]);
 
   // Fetch portfolio data
-  const fetchPortfolioData = async () => {
-    if (!token) return;
+  const fetchPortfolioData = useCallback(async () => {
     try {
-      const data = await getPortfolio();
+      const response = await fetch("http://localhost:8000/portfolio", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await response.json();
       setPortfolio(data);
-    } catch (error) {
-      console.error("Error fetching portfolio:", error);
-      if (error.response?.status === 401) {
-        handleLogout();
-      }
+    } catch (err) {
+      console.error("Error fetching portfolio:", err);
     }
-  };
+  }, [token]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (token) {
       fetchPortfolioData();
       const interval = setInterval(fetchPortfolioData, 10000);
       return () => clearInterval(interval);
     }
-  }, [token]);
+  }, [token, fetchPortfolioData]);
 
   // Handle Login / Signup Submit
   const handleAuthSubmit = async (e) => {
@@ -222,6 +220,12 @@ function App() {
     } finally {
       setChatLoading(false);
     }
+  };
+
+  const handleClearChat = () => {
+    const defaultWelcome = [{ sender: 'ai', text: 'Hello! Ask me anything about your portfolio stocks, market trends, or company updates.' }];
+    setChatMessages(defaultWelcome);
+    localStorage.removeItem("portfolio_chat_history");
   };
 
   // Calculations for Summary Cards
@@ -454,12 +458,24 @@ function App() {
                 <h3 className="font-bold text-sm flex items-center gap-2">
                   🤖 AI Portfolio Assistant
                 </h3>
-                <button 
-                  onClick={() => setIsChatOpen(false)}
-                  className="text-white hover:text-gray-200 text-lg font-bold"
-                >
-                  &times;
-                </button>
+                <div className="flex items-center gap-3">
+                  {/* Clear Chat Button */}
+                  <button 
+                    onClick={handleClearChat}
+                    className="text-xs bg-indigo-700 hover:bg-indigo-800 text-gray-200 px-2 py-1 rounded transition"
+                    title="Clear Chat History"
+                  >
+                    🗑️ Clear
+                  </button>
+                  {/* Close Button */}
+                  <button 
+                    onClick={() => setIsChatOpen(false)}
+                    className="text-white hover:text-gray-200 text-lg font-bold"
+                    title="Close"
+                  >
+                    &times;
+                  </button>
+                </div>
               </div>
 
               {/* Chat Messages Area */}
