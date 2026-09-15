@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { addStock, deleteStock, loginUser, signupUser, logoutUser } from './services/api';
 import ReactMarkdown from 'react-markdown';
+import Swal from 'sweetalert2';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token"));
@@ -87,10 +88,36 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
-    logoutUser();
-    setToken(null);
-    setPortfolio([]);
+const handleLogout = () => {
+    Swal.fire({
+      title: 'Ready to Leave?',
+      text: "You will need to login again to access your portfolio.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#4f46e5', 
+      cancelButtonColor: '#ef4444',  
+      confirmButtonText: 'Yes, Logout',
+      cancelButtonText: 'Cancel',
+      background: '#1f2937', 
+      color: '#ffffff'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        logoutUser();
+        setToken(null);
+        setPortfolio([]);
+        localStorage.removeItem("portfolio_chat_history"); 
+        
+        Swal.fire({
+          title: 'Logged Out!',
+          text: 'You have been successfully logged out.',
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false,
+          background: '#1f2937',
+          color: '#ffffff'
+        });
+      }
+    });
   };
 
   // Handle Add Stock
@@ -120,13 +147,46 @@ function App() {
 
   // Handle Delete Stock
   const handleDelete = async (id, e) => {
-    e.stopPropagation(); // Row click trigger hone se roke
-    try {
-      await deleteStock(id);
-      fetchPortfolioData();
-    } catch (error) {
-      console.error("Error deleting stock:", error);
-    }
+    e.stopPropagation(); 
+    
+    Swal.fire({
+      title: 'Are you sure?',
+      text: "Do you really want to remove this stock from your portfolio?",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#4b5563', 
+      confirmButtonText: 'Yes, Delete it!',
+      cancelButtonText: 'Keep it',
+      background: '#1f2937',
+      color: '#ffffff'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          await deleteStock(id);
+          fetchPortfolioData();
+          
+          Swal.fire({
+            title: 'Deleted!',
+            text: 'Stock has been removed from your portfolio.',
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false,
+            background: '#1f2937',
+            color: '#ffffff'
+          });
+        } catch (error) {
+          console.error("Error deleting stock:", error);
+          Swal.fire({
+            title: 'Error!',
+            text: 'Failed to delete the stock. Please try again.',
+            icon: 'error',
+            background: '#1f2937',
+            color: '#ffffff'
+          });
+        }
+      }
+    });
   };
 
   // Open Sell Modal
