@@ -30,6 +30,21 @@ function App() {
   const [stockDetail, setStockDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // AI Chat State
+  const [inputMessage, setInputMessage] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState(() => {
+    const savedChats = localStorage.getItem("portfolio_chat_history");
+    return savedChats ? JSON.parse(savedChats) : [
+      { sender: 'ai', text: 'Hello! Ask me anything about your portfolio stocks, market trends, or company updates.' }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("portfolio_chat_history", JSON.stringify(chatMessages));
+  }, [chatMessages]);
+
   // Fetch portfolio data
   const fetchPortfolioData = async () => {
     if (!token) return;
@@ -181,6 +196,33 @@ function App() {
     }
   };
 
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!inputMessage.trim()) return;
+
+    const userMsg = inputMessage;
+    setChatMessages(prev => [...prev, { sender: 'user', text: userMsg }]);
+    setInputMessage('');
+    setChatLoading(true);
+
+    try {
+      const response = await fetch("http://localhost:8000/portfolio/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ message: userMsg })
+      });
+      const data = await response.json();
+      setChatMessages(prev => [...prev, { sender: 'ai', text: data.reply }]);
+    } catch (err) {
+      setChatMessages(prev => [...prev, { sender: 'ai', text: "Error connecting to AI service." }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   // Calculations for Summary Cards
   const totalInvestment = portfolio.reduce((acc, item) => acc + item.total_investment, 0);
   const totalCurrentValue = portfolio.reduce((acc, item) => acc + item.current_value, 0);
@@ -247,6 +289,7 @@ function App() {
             </button>
           </div>
         </div>
+        
       </div>
     );
   }
@@ -398,6 +441,71 @@ function App() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* 🤖 Floating AI Bot Icon & Popup Chat Widget */}
+        <div className="fixed bottom-6 right-6 z-50">
+          {/* Chat Window Popup */}
+          {isChatOpen && (
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-80 md:w-96 mb-4 flex flex-col overflow-hidden transition-all duration-300">
+              {/* Header */}
+              <div className="bg-indigo-600 px-4 py-3 flex justify-between items-center text-white">
+                <h3 className="font-bold text-sm flex items-center gap-2">
+                  🤖 AI Portfolio Assistant
+                </h3>
+                <button 
+                  onClick={() => setIsChatOpen(false)}
+                  className="text-white hover:text-gray-200 text-lg font-bold"
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Chat Messages Area */}
+              <div className="bg-gray-900 p-3 h-72 overflow-y-auto space-y-3 flex flex-col">
+                {chatMessages.map((msg, idx) => (
+                  <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] p-3 rounded-lg text-xs leading-relaxed ${msg.sender === 'user' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-700 text-gray-400 p-3 rounded-lg text-xs italic">AI is thinking...</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Input Form */}
+              <form onSubmit={handleSendMessage} className="p-3 bg-gray-800 border-t border-gray-700 flex gap-2">
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  placeholder="Ask about your stocks..."
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-xs"
+                />
+                <button
+                  type="submit"
+                  disabled={chatLoading}
+                  className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded text-white font-semibold text-xs transition"
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Floating AI Bot Button */}
+          <button
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-110 focus:outline-none relative group"
+            title="Chat with AI Assistant"
+          >
+            <span className="absolute -top-1 -right-1 bg-green-500 w-3 h-3 rounded-full border-2 border-gray-900 animate-pulse"></span>
+            <span className="text-2xl">🤖</span>
+          </button>
         </div>
       </div>
 

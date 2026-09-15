@@ -2,8 +2,12 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import yfinance as yf
+import os
+import requests
 from . import models, database, schemas
 from pydantic import BaseModel
+from dotenv import load_dotenv
+load_dotenv()
 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
@@ -312,3 +316,51 @@ def get_stock_details(symbol: str, db: Session = Depends(database.get_db), curre
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))    
+
+
+
+@app.post("/portfolio/chat")
+def portfolio_chat(data: dict, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    user_message = data.get("message", "")
+    
+    # fetch user portfolio stocks
+    stocks = db.query(models.Portfolio).filter(models.Portfolio.user_id == current_user.id).all()
+    stock_symbols = [s.symbol for s in stocks]
+    
+    portfolio_context = f"The user's current portfolio contains these stocks: {', '.join(stock_symbols)}." if stock_symbols else "The user's portfolio is currently empty."
+    
+    prompt = f"""
+    You are an expert AI Stock Market Assistant and Financial Advisor.
+    {portfolio_context}
+    
+    User Query: "{user_message}"
+    
+    Provide a helpful, sharp, and concise financial response. Keep it professional.
+    """
+    
+    API_KEY = os.getenv("GEMINI_API_KEY")
+    
+    if API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+        return {"reply": "⚠️ Gemini API Key is missing. Please configure your API key in the backend."}
+    
+    # Updated stable Gemini model endpoint
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={API_KEY}"
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, json=payload)
+        res_data = response.json()
+        
+        if "error" in res_data:
+            print(f"Gemini API Error Response: {res_data['error']}")
+            return {"reply": f"AI Error: {res_data['error'].get('message', 'Unknown error from Gemini')}"}
+            
+        ai_reply = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        return {"reply": ai_reply}
+    except Exception as e:
+        print(f"Chat Exception: {e}")
+        return {"reply": f"AI Assistant connection error: {str(e)}"}
