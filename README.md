@@ -36,3 +36,9 @@ ai-stock-portfolio/
 ├── portfolio-frontend/Dockerfile # Frontend Dockerfile
 ├── docker-compose.yml    # Docker orchestration file
 └── requirements.txt      # Python dependencies
+
+
+<!-- backend restart 
+    source venv/bin/activate
+    uvicorn app.main:app --reload
+ -->

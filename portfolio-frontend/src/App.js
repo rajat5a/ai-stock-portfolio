@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { getPortfolio, addStock, deleteStock, loginUser, signupUser, logoutUser } from './services/api';
 
 function App() {
@@ -24,6 +25,11 @@ function App() {
   const [sellQuantity, setSellQuantity] = useState('');
   const [sellPrice, setSellPrice] = useState('');
 
+  // Stock Detail Modal State (Chart & High/Low)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [stockDetail, setStockDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   // Fetch portfolio data
   const fetchPortfolioData = async () => {
     if (!token) return;
@@ -38,10 +44,11 @@ function App() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (token) {
       fetchPortfolioData();
-      const interval = setInterval(fetchPortfolioData, 1000);
+      const interval = setInterval(fetchPortfolioData, 10000);
       return () => clearInterval(interval);
     }
   }, [token]);
@@ -98,7 +105,8 @@ function App() {
   };
 
   // Handle Delete Stock
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, e) => {
+    e.stopPropagation(); // Row click trigger hone se roke
     try {
       await deleteStock(id);
       fetchPortfolioData();
@@ -108,7 +116,8 @@ function App() {
   };
 
   // Open Sell Modal
-  const openSellModal = (stock) => {
+  const openSellModal = (stock, e) => {
+    e.stopPropagation(); // Row click trigger hone se roke
     setSelectedStock(stock);
     setSellQuantity('');
     setSellPrice(stock.current_price || '');
@@ -148,6 +157,27 @@ function App() {
       fetchPortfolioData();
     } catch (err) {
       alert(err.message);
+    }
+  };
+
+  // Open Stock Detail Modal (Fetch Chart & High/Low)
+  const handleRowClick = async (stock) => {
+    setIsDetailModalOpen(true);
+    setDetailLoading(true);
+    setStockDetail(null);
+    try {
+      const response = await fetch(`http://localhost:8000/portfolio/${stock.symbol}/details`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error("Failed to fetch stock details");
+      const data = await response.json();
+      setStockDetail({ ...stock, ...data });
+    } catch (err) {
+      console.error("Error fetching details:", err);
+      // Fallback agar backend endpoint alag naam se ho
+      setStockDetail(stock);
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -311,8 +341,9 @@ function App() {
 
         {/* Holdings Table */}
         <div className="bg-gray-800 rounded-xl shadow border border-gray-700 overflow-hidden">
-          <div className="p-6 border-b border-gray-700">
+          <div className="p-6 border-b border-gray-700 flex justify-between items-center">
             <h2 className="text-xl font-semibold text-indigo-300">Your Holdings</h2>
+            <span className="text-xs text-gray-400">💡 Click any stock row to view details & chart</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -334,7 +365,11 @@ function App() {
                   </tr>
                 ) : (
                   portfolio.map((stock) => (
-                    <tr key={stock.id} className="hover:bg-gray-750">
+                    <tr 
+                      key={stock.id} 
+                      onClick={() => handleRowClick(stock)}
+                      className="hover:bg-gray-700/50 cursor-pointer transition"
+                    >
                       <td className="p-4 font-bold">{stock.symbol.replace('.NS', '').replace('.BO', '')}</td>
                       <td className="p-4">{stock.quantity}</td>
                       <td className="p-4">₹{stock.buy_price}</td>
@@ -345,13 +380,13 @@ function App() {
                       </td>
                       <td className="p-4 flex space-x-2">
                         <button
-                          onClick={() => openSellModal(stock)}
+                          onClick={(e) => openSellModal(stock, e)}
                           className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs font-semibold transition"
                         >
                           Sell
                         </button>
                         <button
-                          onClick={() => handleDelete(stock.id)}
+                          onClick={(e) => handleDelete(stock.id, e)}
                           className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs font-semibold transition"
                         >
                           Delete
@@ -365,6 +400,78 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Stock Detail & Chart Modal Popup */}
+      {isDetailModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-2xl shadow-2xl relative">
+            <button 
+              onClick={() => setIsDetailModalOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl font-bold"
+            >
+              &times;
+            </button>
+
+            {detailLoading ? (
+              <div className="py-16 text-center text-gray-400">Loading chart and market details...</div>
+            ) : stockDetail ? (
+              <div>
+                <div className="mb-4">
+                  <h3 className="text-2xl font-bold text-indigo-400">{stockDetail.symbol}</h3>
+                  <p className="text-gray-400 text-sm">Live Market & Intraday Overview</p>
+                </div>
+
+                {/* High / Low & Today's P&L Quick Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 bg-gray-900 p-4 rounded-lg border border-gray-700">
+                  <div>
+                    <p className="text-gray-400 text-xs">Current Price</p>
+                    <p className="text-lg font-bold">₹{stockDetail.current_price}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-xs">Today's P&L</p>
+                    <p className={`text-lg font-bold ${stockDetail.today_profit_loss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      ₹{stockDetail.today_profit_loss || 0}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-xs">Today's High</p>
+                    <p className="text-lg font-bold text-green-400">₹{stockDetail.day_high || stockDetail.current_price}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-xs">Today's Low</p>
+                    <p className="text-lg font-bold text-red-400">₹{stockDetail.day_low || stockDetail.current_price}</p>
+                  </div>
+                </div>
+
+                {/* Chart Section */}
+                <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                  <h4 className="text-sm font-semibold text-gray-300 mb-3">Today's Price Movement Chart</h4>
+                  <div className="w-full h-64">
+                    {stockDetail.chart_data && stockDetail.chart_data.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={stockDetail.chart_data}>
+                          <XAxis dataKey="time" stroke="#9ca3af" textAnchor="end" tick={{ fontSize: 11 }} />
+                          <YAxis stroke="#9ca3af" domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }} 
+                          />
+                          <Line type="monotone" dataKey="price" stroke="#6366f1" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                        Chart data unavailable for this stock today.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-16 text-center text-red-400">Failed to load stock information.</div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Sell Modal Popup */}
       {isSellModalOpen && selectedStock && (

@@ -114,17 +114,22 @@ def get_portfolio(db: Session = Depends(database.get_db), current_user: models.U
         previous_close = stock.buy_price
         try:
             ticker = yf.Ticker(stock.symbol)
-            hist = ticker.history(period="2d")
-            if not hist.empty and 'Close' in hist:
-                current_price = hist['Close'].iloc[-1]
-                previous_close = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
-        except Exception:
-            pass
+            hist = ticker.history(period="5d")  
+            
+            if not hist.empty:
+        
+                close_prices = hist['Close']
+                if hasattr(close_prices, 'iloc') and len(close_prices) >= 1:
+                    current_price = float(close_prices.iloc[-1])
+                    previous_close = float(close_prices.iloc[-2]) if len(close_prices) >= 2 else current_price
+        except Exception as e:
+            print(f"Error fetching price for {stock.symbol}: {e}")
 
         total_investment = stock.quantity * stock.buy_price
         current_value = stock.quantity * current_price
         profit_loss = current_value - total_investment
         profit_loss_percentage = (profit_loss / total_investment) * 100 if total_investment > 0 else 0
+        
         today_profit_loss = (current_price - previous_close) * stock.quantity
         today_profit_loss_percentage = ((current_price - previous_close) / previous_close) * 100 if previous_close > 0 else 0
 
@@ -277,3 +282,33 @@ def delete_stock(stock_id: int, db: Session = Depends(database.get_db), current_
     db.delete(stock)
     db.commit()
     return {"message": "Stock deleted successfully", "stock_id": stock_id}
+
+@app.get("/portfolio/{symbol}/details")
+def get_stock_details(symbol: str, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    try:
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="1d", interval="5m")
+        if hist.empty:
+            hist = ticker.history(period="2d")
+
+        day_high = float(hist['High'].max()) if not hist.empty else 0.0
+        day_low = float(hist['Low'].min()) if not hist.empty else 0.0
+        current_price = float(hist['Close'].iloc[-1]) if not hist.empty else 0.0
+
+        chart_data = []
+        if not hist.empty:
+            for timestamp, row in hist.iterrows():
+                chart_data.append({
+                    "time": timestamp.strftime("%H:%M" if len(hist) <= 78 else "%Y-%m-%d"),
+                    "price": round(float(row['Close']), 2)
+                })
+
+        return {
+            "symbol": symbol,
+            "day_high": round(day_high, 2),
+            "day_low": round(day_low, 2),
+            "current_price": round(current_price, 2),
+            "chart_data": chart_data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))    
